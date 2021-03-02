@@ -6,10 +6,7 @@ import pandas as pd
 import numpy as np
 
 import torch
-from torch_scatter import scatter_add
 from torch_geometric.data import InMemoryDataset, Data, download_url, extract_zip
-from torch_geometric.utils import one_hot
-
 
 class MCDataset(InMemoryDataset):
     def __init__(self, root, name, transform=None, pre_transform=None):
@@ -71,7 +68,7 @@ class MCDataset(InMemoryDataset):
             count = (train_df == idx).values.sum()
             edge_norm = torch.where(edge_norm==idx,
                                     torch.tensor(count),
-                                    edge_norm)
+                                    edge_norm.int())
         edge_norm = (1 / edge_norm.to(torch.float))
 
         # Prepare data

@@ -1,7 +1,6 @@
 import torch
 import torch.nn as nn
 from torch_geometric.nn.conv import MessagePassing
-from torch_geometric.utils import scatter_
 from utils import stack, split_stack
 
 
@@ -83,7 +82,8 @@ class RGCLayer(MessagePassing):
         elif aggr == 'stack':
             out = stack(out, edge_index[0], kwargs['edge_type'], dim_size=size)
         else:
-            out = scatter_(aggr, out, edge_index[0], dim_size=size)
+            out = torch.scatter(out, edge_index[0], dim_size=size, reduce=aggr)
+            #out = scatter_(aggr, out, edge_index[0], dim_size=size)
         out = self.update(out, *update_args)
 
         return out

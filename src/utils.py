@@ -4,7 +4,6 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch_geometric.utils import scatter_
 
 
 class Config(dict):
@@ -46,7 +45,8 @@ def split_stack(features, index, relations, dim_size):
         relation_only_r = torch.from_numpy(np.where(np_relations==r)[0])
         r_index = index[relation_only_r]
         r_feature = feature[relation_only_r]
-        stacked_out.append(scatter_('add', r_feature, r_index, dim_size=dim_size))
+        stacked_out.append(torch.scatter(r_feature, r_index, dim_size=dim_size, reduce='add'))
+        # stacked_out.append(scatter_('add', r_feature, r_index, dim_size=dim_size))
         # stacked_out.append(scatter_('add', feature, index, dim_size=dim_size))
 
     stacked_out = torch.cat(stacked_out, 1)

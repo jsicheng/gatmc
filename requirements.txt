@@ -1,0 +1,7 @@
+pyyaml
+pandas
+-f https://pytorch-geometric.com/whl/torch-1.7.0+cu102.html
+torch-scatter
+torch-sparse
+torch-spline-conv
+torch-geometric
