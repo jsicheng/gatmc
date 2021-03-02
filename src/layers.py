@@ -20,7 +20,7 @@ class RGCLayer(MessagePassing):
         self.accum = config.accum
         self.bn = config.rgc_bn
         self.relu = config.rgc_relu
-        
+
         if config.accum == 'split_stack':
             # each 100 dimention has each realtion node features
             # user-item-weight-sharing
@@ -29,7 +29,7 @@ class RGCLayer(MessagePassing):
             self.dropout = nn.Dropout(self.drop_prob)
         else:
             # ordinal basis matrices in_c * out_c = 2625 * 500
-            ord_basis = [nn.Parameter(torch.Tensor(1, in_c * out_c)) for r in range(self.num_relations)]
+            ord_basis = [nn.Parameter(torch.Tensor(1, self.in_c * self.out_c)) for r in range(self.num_relations)]
             self.ord_basis = nn.ParameterList(ord_basis)
         self.relu = nn.ReLU()
 
@@ -83,7 +83,6 @@ class RGCLayer(MessagePassing):
             out = stack(out, edge_index[0], kwargs['edge_type'], dim_size=size)
         else:
             out = torch.scatter(out, edge_index[0], dim_size=size, reduce=aggr)
-            #out = scatter_(aggr, out, edge_index[0], dim_size=size)
         out = self.update(out, *update_args)
 
         return out
@@ -92,17 +91,17 @@ class RGCLayer(MessagePassing):
         # create weight using ordinal weight sharing
         if self.accum == 'split_stack':
             weight = torch.cat((self.base_weight[:self.num_users],
-                self.base_weight[:self.num_item]), 0)
+                                self.base_weight[:self.num_item]), 0)
             # weight = self.dropout(weight)
             index = x_j
-            
+
         else:
             for relation in range(self.num_relations):
                 if relation == 0:
                     weight = self.ord_basis[relation]
                 else:
-                    weight = torch.cat((weight, weight[-1] 
-                        + self.ord_basis[relation]), 0)
+                    weight = torch.cat((weight, weight[-1]
+                                        + self.ord_basis[relation]), 0)
 
             # weight (R x (in_dim * out_dim)) reshape to (R * in_dim) x out_dim
             # weight has all nodes features
@@ -160,8 +159,8 @@ class DenseLayer(nn.Module):
         if config.accum == 'stack':
             self.bn_u = nn.BatchNorm1d(config.num_users * config.num_relations)
             self.bn_i = nn.BatchNorm1d((
-                config.num_nodes - config.num_users) * config.num_relations
-            )
+                                               config.num_nodes - config.num_users) * config.num_relations
+                                       )
         else:
             self.bn_u = nn.BatchNorm1d(config.num_users)
             self.bn_i = nn.BatchNorm1d(config.num_nodes - config.num_users)
@@ -172,7 +171,7 @@ class DenseLayer(nn.Module):
         u_features = self.fc(u_features)
         if self.bn:
             u_features = self.bn_u(
-                    u_features.unsqueeze(0)).squeeze()
+                u_features.unsqueeze(0)).squeeze()
         if self.relu:
             u_features = self.relu(u_features)
 
@@ -180,7 +179,7 @@ class DenseLayer(nn.Module):
         i_features = self.fc(i_features)
         if self.bn:
             i_features = self.bn_i(
-                    i_features.unsqueeze(0)).squeeze()
+                i_features.unsqueeze(0)).squeeze()
         if self.relu:
             i_features = self.relu(i_features)
 
