@@ -33,7 +33,7 @@ def main(cfg):
 
     # train
     trainer = Trainer(
-        model, dataset, data, calc_rmse, optimizer, experiment,
+        model, dataset, data, calc_rmse, optimizer
     )
     trainer.training(cfg.epochs)
 

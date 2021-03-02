@@ -5,13 +5,12 @@ import torch.nn.functional as F
 
 class Trainer:
     def __init__(self, model, dataset, data, calc_rmse,
-                 optimizer, experiment=None):
+                 optimizer):
         self.model = model
         self.dataset = dataset
         self.data = data
         self.calc_rmse = calc_rmse
         self.optimizer = optimizer
-        self.experiment = experiment
 
     def training(self, epochs):
         self.epochs = epochs
@@ -19,11 +18,6 @@ class Trainer:
             loss, train_rmse = self.train_one(epoch)
             test_rmse = self.test()
             self.summary(epoch, loss, train_rmse, test_rmse)
-            if self.experiment is not None:
-                metrics = {'loss': loss,
-                           'train_rmse': train_rmse,
-                           'test_rmse': test_rmse}
-                self.experiment.log_metrics(metrics, step=epoch)
 
         print('END TRAINING')
 
