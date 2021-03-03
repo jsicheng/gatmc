@@ -67,7 +67,7 @@ class MCDataset(InMemoryDataset):
         for idx in range(train_nums['node']):
             count = (train_df == idx).values.sum()
             edge_norm = torch.where(edge_norm==idx,
-                                    torch.tensor(count),
+                                    torch.tensor(np.int64(count)),
                                     edge_norm)
         edge_norm = (1 / edge_norm.to(torch.float))
 
