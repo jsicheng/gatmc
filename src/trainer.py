@@ -35,7 +35,7 @@ class Trainer:
     def test(self):
         self.model.eval()
         out = self.model(self.data.x, self.data.edge_index, 
-                         self.data.edge_type, self.data.edge_norm)
+                         self.data.edge_type, self.data.edge_norm, self.data)
         rmse = self.calc_rmse(out[self.data.test_idx], self.data.test_gt)
         return rmse.item()
 

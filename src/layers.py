@@ -79,7 +79,7 @@ class RGCLayer(MessagePassing):
             edge_index_r_indices = (edge_type == r).nonzero().view(-1)
             edge_index_r = edge_index[:,edge_index_r_indices]
             mu_jr = mu_j[r]
-            h.append(scatter_add(mu_jr, edge_index_r, dim=0, dim_size=self.in_c))
+            h.append(scatter_add(mu_jr[edge_index_r[0]], edge_index_r[1], dim=0, dim_size=self.in_c))
         h = torch.sum(torch.stack(tuple(h),dim=0),dim=0)
 
         # post process sigmoid stuff
