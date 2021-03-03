@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 from torch_geometric.nn.conv import MessagePassing
+from torch_scatter import scatter_add
 from utils import stack, split_stack
 
 
@@ -21,16 +22,19 @@ class RGCLayer(MessagePassing):
         self.bn = config.rgc_bn
         self.relu = config.rgc_relu
 
-        if config.accum == 'split_stack':
-            # each 100 dimention has each realtion node features
-            # user-item-weight-sharing
-            self.base_weight = nn.Parameter(torch.Tensor(
-                max(self.num_users, self.num_item), self.out_c))
-            self.dropout = nn.Dropout(self.drop_prob)
-        else:
-            # ordinal basis matrices in_c * out_c = 2625 * 500
-            ord_basis = [nn.Parameter(torch.Tensor(1, self.in_c * self.out_c)) for r in range(self.num_relations)]
-            self.ord_basis = nn.ParameterList(ord_basis)
+        # if config.accum == 'split_stack':
+        #     # each 100 dimention has each realtion node features
+        #     # user-item-weight-sharing
+        #     self.base_weight = nn.Parameter(torch.Tensor(
+        #         max(self.num_users, self.num_item), self.out_c))
+        #     self.dropout = nn.Dropout(self.drop_prob)
+        # else:
+        #     # ordinal basis matrices in_c * out_c = 2625 * 500
+        #     ord_basis = [nn.Parameter(torch.Tensor(1, self.in_c * self.out_c)) for r in range(self.num_relations)]
+
+        ord_basis = [nn.Parameter(torch.Tensor(self.in_c, self.out_c)) for r in range(self.num_relations)]
+        self.ord_basis = nn.ParameterList(ord_basis)
+
         self.relu = nn.ReLU()
 
         if config.accum == 'stack':
@@ -41,14 +45,50 @@ class RGCLayer(MessagePassing):
         self.reset_parameters(weight_init)
 
     def reset_parameters(self, weight_init):
-        if self.accum == 'split_stack':
-            weight_init(self.base_weight, self.in_c, self.out_c)
-        else:
-            for basis in self.ord_basis:
-                weight_init(basis, self.in_c, self.out_c)
+        # if self.accum == 'split_stack':
+        #     weight_init(self.base_weight, self.in_c, self.out_c)
+        # else:
+        #     for basis in self.ord_basis:
+        #         weight_init(basis, self.in_c, self.out_c)
+        for basis in self.ord_basis:
+            weight_init(basis, self.in_c, self.out_c)
 
     def forward(self, x, edge_index, edge_type, edge_norm=None):
-        return self.propagate(self.accum, edge_index, x=x, edge_type=edge_type, edge_norm=edge_norm)
+        # return self.propagate(self.accum, edge_index, x=x, edge_type=edge_type, edge_norm=edge_norm)
+        return self.our_propagate(x, edge_index, edge_type, edge_norm)
+
+    def our_propagate(self, x, edge_index, edge_type, edge_norm):
+        mu_j = torch.zeros(self.num_relations, self.in_c, self.out_c)
+        for r in range(self.num_relations):
+            assert type(r) is int
+            mu_j[r:] += self.ord_basis[r]
+            # for i in range(r, self.num_relations):
+            #     mu_jr[i] += self.ord_basis[r]
+        # TODO: edge level dropout(?)
+        # mu_jr = \
+        #     torch.transpose(
+        #         self.node_dropout(
+        #             torch.transpose(
+        #                 mu_jr, 0, 1)
+        #         ), 0, 1
+        #     )
+
+        # TODO: add 1/c term
+        h = []
+        for r in edge_type:
+            edge_index_r_indices = (edge_type == r).nonzero().view(-1)
+            edge_index_r = edge_index[:,edge_index_r_indices]
+            mu_jr = mu_j[r]
+            h.append(scatter_add(mu_jr, edge_index_r, dim=0, dim_size=self.in_c))
+        h = torch.sum(torch.stack(tuple(h),dim=0),dim=0)
+
+        # post process sigmoid stuff
+        if self.bn:
+            h = self.bn(h.unsqueeze(0)).squeeze(0)
+        if self.relu:
+            h = self.relu(h)
+
+        return h
 
     def propagate(self, aggr, edge_index, **kwargs):
         r"""The initial call to start propagating messages.
@@ -61,29 +101,30 @@ class RGCLayer(MessagePassing):
 
         size = None
         message_args = []
-        for arg in self.message_args:
-            if arg[-2:] == '_i':
-                # tmp is x
-                tmp = kwargs[arg[:-2]]
-                size = tmp.size(0)
-                message_args.append(tmp[edge_index[0]])
-            elif arg[-2:] == '_j':
-                tmp = kwargs[arg[:-2]]
-                size = tmp.size(0)
-                message_args.append(tmp[edge_index[1]])
-            else:
-                message_args.append(kwargs[arg])
+        # for arg in self.message_args:
+        #     if arg[-2:] == '_i':
+        #         # tmp is x
+        #         tmp = kwargs[arg[:-2]]
+        #         size = tmp.size(0)
+        #         message_args.append(tmp[edge_index[0]])
+        #     elif arg[-2:] == '_j':
+        #         tmp = kwargs[arg[:-2]]
+        #         size = tmp.size(0)
+        #         message_args.append(tmp[edge_index[1]])
+        #     else:
+        #         message_args.append(kwargs[arg])
+        #
+        # update_args = [kwargs[arg] for arg in self.update_args]
 
-        update_args = [kwargs[arg] for arg in self.update_args]
-
-        out = self.message(*message_args)
+        # out = self.message(*message_args)
+        out = self.message(kwargs['x'], kwargs['edge_type'], kwargs['edge_norm'])
         if aggr == 'split_stack':
             out = split_stack(out, edge_index[0], kwargs['edge_type'], dim_size=size)
         elif aggr == 'stack':
             out = stack(out, edge_index[0], kwargs['edge_type'], dim_size=size)
         else:
             out = torch.scatter(out, edge_index[0], dim_size=size, reduce=aggr)
-        out = self.update(out, *update_args)
+        out = self.update(out)#, *update_args)
 
         return out
 
@@ -138,6 +179,7 @@ class RGCLayer(MessagePassing):
 
         drop_mask = drop_mask.expand(drop_mask.size(0), self.out_c)
 
+        print(weight.shape, drop_mask.shape)
         assert weight.shape == drop_mask.shape
         weight = weight * drop_mask
 
