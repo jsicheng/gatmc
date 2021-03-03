@@ -64,7 +64,7 @@ def stack(features, index, relations, dim_size):
         output of messge method in RGCLayer class
     index : tensor (edges)
         edge_index[0]
-    relations : teonsor(edges)
+    relations : tensor(edges)
         edge_type
     dim_size : tensor(num_nodes)
         input size (the number of nodes)
