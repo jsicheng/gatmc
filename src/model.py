@@ -19,7 +19,7 @@ class GAE(nn.Module):
         self.bidec = BiDecoder(config, weight_init)
 
     def forward(self, x, edge_index, edge_type, edge_norm, data):
-        u_features, i_features = self.gcenc(x, edge_index, edge_type, edge_norm)#, data)
+        u_features, i_features = self.gcenc(x, edge_index, edge_type, edge_norm, data)
         adj_matrices = self.bidec(u_features, i_features)
 
         return adj_matrices
@@ -175,7 +175,7 @@ class GCEncoder(nn.Module):
         self.rgc_layer = RGCLayer(config, weight_init)
         self.dense_layer = DenseLayer(config, weight_init)
 
-    def forward(self, x, edge_index, edge_type, edge_norm):
+    def forward(self, x, edge_index, edge_type, edge_norm, data):
         features = self.rgc_layer(x, edge_index, edge_type, edge_norm)
         u_features, i_features = self.separate_features(features)
         u_features, i_features = self.dense_layer(u_features, i_features)
