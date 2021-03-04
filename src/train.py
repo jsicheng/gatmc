@@ -10,9 +10,7 @@ def main(cfg):
     cfg = Config(cfg)
 
     # device and dataset setting
-    device = (torch.device(f'cuda:{cfg.gpu_id}')
-        if torch.cuda.is_available() and cfg.gpu_id >= 0
-        else torch.device('cpu'))
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     dataset = MCDataset(cfg.root, cfg.dataset_name)
     data = dataset[0].to(device)
 
@@ -24,16 +22,16 @@ def main(cfg):
     # set and init model
     model = GAE(cfg, random_init).to(device)
     model.apply(init_xavier)
-
+    
     # optimizer
     optimizer = torch.optim.Adam(
         model.parameters(),
         lr=cfg.lr, weight_decay=cfg.weight_decay,
     )
-
+    
     # train
     trainer = Trainer(
-        model, dataset, data, calc_rmse, optimizer
+        model, data, calc_rmse, optimizer
     )
     trainer.training(cfg.epochs)
 

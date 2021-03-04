@@ -4,9 +4,8 @@ import torch.nn.functional as F
 
 
 class Trainer:
-    def __init__(self, model, dataset, data, calc_rmse, optimizer):
+    def __init__(self, model, data, calc_rmse, optimizer):
         self.model = model
-        self.dataset = dataset
         self.data = data
         self.calc_rmse = calc_rmse
         self.optimizer = optimizer
