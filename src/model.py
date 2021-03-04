@@ -15,7 +15,7 @@ GCN, GAT = 'gcn', 'gat'
 class GAE(nn.Module):
     def __init__(self, config, weight_init):
         super(GAE, self).__init__()
-        self.gcenc = OurGCEncoder(config, weight_init)
+        self.gcenc = GCEncoder(config, weight_init)
         self.bidec = BiDecoder(config, weight_init)
 
     def forward(self, x, edge_index, edge_type, edge_norm, data):

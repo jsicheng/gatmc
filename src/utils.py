@@ -123,8 +123,9 @@ def truncated_normal(tensor, mean=0, std=1):
                 break
 
 def calc_rmse(pred, gt):
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     pred = F.softmax(pred, dim=1)
-    expected_pred = torch.zeros(gt.shape)
+    expected_pred = torch.zeros(gt.shape).to(device)
     for relation in range(pred.shape[1]):
         expected_pred += pred[:, relation] * (relation + 1)
 

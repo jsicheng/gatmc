@@ -58,7 +58,8 @@ class RGCLayer(MessagePassing):
         return self.our_propagate(x, edge_index, edge_type, edge_norm)
 
     def our_propagate(self, x, edge_index, edge_type, edge_norm):
-        mu_j = torch.zeros(self.num_relations, self.in_c, self.out_c)
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        mu_j = torch.zeros(self.num_relations, self.in_c, self.out_c).to(device)
         for r in range(self.num_relations):
             assert type(r) is int
             mu_j[r:] += self.ord_basis[r]
@@ -89,9 +90,11 @@ class RGCLayer(MessagePassing):
         return h
 
     def our_node_dropout(self, weight):
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         drop_mask = torch.rand(self.in_c) + (1 - self.drop_prob)
         drop_mask = torch.floor(drop_mask).type(torch.float)
         drop_mask = drop_mask.view(1,-1,1)
+        drop_mask = drop_mask.to(device)
         weight = weight * drop_mask
 
         return weight

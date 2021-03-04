@@ -22,7 +22,7 @@ def main(cfg):
     # set and init model
     model = GAE(cfg, random_init).to(device)
     model.apply(init_xavier)
-    
+
     # optimizer
     optimizer = torch.optim.Adam(
         model.parameters(),
