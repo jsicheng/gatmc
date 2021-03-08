@@ -4,7 +4,7 @@ import torch.nn.functional as F
 import networkx as nx
 from layers import RGCLayer, GNNLayer, DenseLayer
 from torch_geometric.utils.convert import to_networkx
-
+from collections import defaultdict
 USER, ITEM = 'user', 'item'
 GCN, GAT = 'gcn', 'gat'
 
@@ -25,50 +25,125 @@ class GAE(nn.Module):
 class OurGCEncoder(nn.Module):
     def __init__(self, config, weight_init):
         super(OurGCEncoder, self).__init__()
+        in_dim = 64
         self.num_relations = config.num_relations
         self.num_users = config.num_users
+        self.num_items = config.num_items
         self.accum = config.accum
+        self.drop_prob = config.drop_prob
+        self.encoder_user = nn.Linear(3, in_dim)
+        self.encoder_item = nn.Linear(3, in_dim)
 
         # self.rgc_layer = RGCLayer(config, weight_init)
-        self.gnn = GNNLayer(config, weight_init, GCN, 2, self.num_users)
+        self.gnn = GNNLayer(config, weight_init, GCN, 2, self.num_users, self.num_relations)
         self.dense_layer = DenseLayer(config, weight_init)
 
     def forward(self, x, edge_index, edge_type, edge_norm, data):
-        g = to_networkx(data)
-        if self.accum == 'stack':
-            # TODO: if stack also refers to input x:
-            # num_nodes = int(x.shape[0] / self.num_relations)
-            # assert num_nodes == g.number_of_nodes()
-            # TODO: else:
-            assert x.shape[0] == g.number_of_nodes()
+        # g = to_networkx(data)
+        # if self.accum == 'stack':
+        #     # TODO: if stack also refers to input x:
+        #     # num_nodes = int(x.shape[0] / self.num_relations)
+        #     # assert num_nodes == g.number_of_nodes()
+        #     # TODO: else:
+        #     assert x.shape[0] == g.number_of_nodes()
+        self.init_g(x.shape[0], edge_index, edge_type)
+        relation2edge_dict = self.separate_edges(edge_index, edge_type) # TODO: separate edges correctly
+        x = self.get_x_init()
 
-        if len(x.shape) < 2:
-            x = torch.unsqueeze(x, dim=1).type(torch.FloatTensor)
-
-        edge_index_u, edge_index_v = self.separate_edges(g)
-
-        features = self.gnn(x, edge_index, edge_index_u, edge_index_v)
+        features = self.gnn(x, edge_index, relation2edge_dict) # TODO: set up dimensions properly
         # features = self.rgc_layer(x, edge_index, edge_type, edge_norm)
         u_features, i_features = self.separate_features(features)
         u_features, i_features = self.dense_layer(u_features, i_features)
 
         return u_features, i_features
 
-    def separate_edges(self, g):
+    def init_g(self, num_nodes, edge_index, edge_type):
+        g = nx.Graph()
+        g.add_nodes_from(range(num_nodes))
+        for r in range(self.num_relations):
+            edge_index_r_indices = (edge_type == r).nonzero().view(-1)
+            edge_index_r = edge_index[:,edge_index_r_indices]
+            edge_list_r = edge_index_r.t().tolist()
+            g.add_edges_from(edge_list_r, r=r) # TODO: ensure that the nodes added preserve order i.e. g.nodes[nid]['nid'] == nid \forall nid
+        self.g = g
+
+    def get_x_init(self):
+        avg_ratings, num_ratings, ones_vec = self.get_node_metadata()
+        init_features = torch.stack((avg_ratings, num_ratings, ones_vec), dim=-1) # (N+M) x 3
+        x_users = self.encoder_user(init_features[:self.num_users])# N x 3 * 3 x D = N x D
+        x_items = self.encoder_item(init_features[:self.num_users]) # M x 3 * 3 x D = M x D
+        x_init = torch.cat((x_users, x_items), dim=0) # (N+M) x D
+        x_init = self.our_node_dropout(x_init)
+        # print(x_init.shape, x_init)
+        return x_init
+
+    def our_node_dropout(self, x):
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        drop_mask = torch.rand(x.size(0), device=device) + (1 - self.drop_prob)
+        drop_mask = torch.floor(drop_mask).type(torch.float)
+        drop_mask = drop_mask.view(-1,1)
+        x = x * drop_mask
+        return x
+
+    def get_node_metadata(self):
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        avg_ratings = torch.zeros(len(self.g.nodes), dtype=torch.float32, device=device)
+        num_ratings = torch.zeros(len(self.g.nodes), dtype=torch.float32, device=device)
+        ones_vec = torch.ones(len(self.g.nodes), dtype=torch.float32, device=device)
+        for (u,v) in self.g.edges():
+            rating = self.g.edges[(u,v)]['r']
+            avg_ratings[u] += rating
+            avg_ratings[v] += rating
+            num_ratings[u] += 1
+            num_ratings[v] += 1
+        avg_ratings[num_ratings > 0.1] = avg_ratings[num_ratings > 0.1] / num_ratings[num_ratings > 0.1]
+        return avg_ratings, num_ratings, ones_vec
+
+    def separate_edges(self, edge_index, edge_type):
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         # create map linking users to items and vice versa in bipartite graph
-        u2i, i2u = {}, {}
-        for nid in g.nodes():
-            if self._is_user_or_item(nid, g) == USER:
-                u2i[nid] = list(nx.neighbors(g, nid))
-            elif self._is_user_or_item(nid, g) == ITEM:
-                i2u[nid] = list(nx.neighbors(g, nid))
+        relation2link_dict = \
+            {
+                r:{'u2i':defaultdict(list), 'i2u':defaultdict(list)}
+                for r in range(self.num_relations)
+            }
+        for (u,v) in self.g.edges():
+            r = self.g.edges[(u,v)]['r']
+            if self._is_user_or_item(u) == USER:
+                assert self._is_user_or_item(v) == ITEM
+                relation2link_dict[r]['u2i'][u].append(v)
+                relation2link_dict[r]['i2u'][v].append(u)
+            elif self._is_user_or_item(u) == ITEM:
+                assert self._is_user_or_item(v) == USER
+                relation2link_dict[r]['u2i'][v].append(u)
+                relation2link_dict[r]['i2u'][u].append(v)
             else:
                 assert False
-        # create u2u edges and i2i edges
-        user_edges = torch.LongTensor(self._multiply_edges(u2i, i2u))
-        item_edges = torch.LongTensor(self._multiply_edges(i2u, u2i))
 
-        return user_edges, item_edges
+        # create u2u edges and i2i edges
+        relation2edges = \
+            {
+                r: {'user': None, 'item': None, 'user-item': None}
+                for r in range(self.num_relations)
+            }
+        for r in range(self.num_relations):
+            u2i = relation2link_dict[r]['u2i']
+            i2u = relation2link_dict[r]['i2u']
+            relation2edges[r]['user'] = \
+                torch.LongTensor(
+                    self._multiply_edges(u2i, i2u)
+                ).to(device)
+            relation2edges[r]['item'] = \
+                torch.LongTensor(
+                    self._multiply_edges(i2u, u2i)
+                ).to(device)
+
+        # create u2i/i2u edges:
+        for r in range(self.num_relations):
+            edge_index_r_indices = (edge_type == r).nonzero().view(-1)
+            edge_index_r = edge_index[:,edge_index_r_indices]
+            relation2edges[r]['user-item'] = edge_index_r
+        return relation2edges
 
     def _multiply_edges(self, a2b, b2a):
         a_edges_u, a_edges_v = [], []
@@ -79,16 +154,8 @@ class OurGCEncoder(nn.Module):
                 a_edges_v.extend(a_v_li)
         return [a_edges_u, a_edges_v]
 
-    def _is_user_or_item(self, nid, g):
-        # TODO: if stack also refers to input x:
-        # if self.accum == 'stack':
-        #     nid_norm = nid % g.number_of_nodes()
-        # else:
-        #     nid_norm = nid
-        # TODO: else:
-        nid_norm = nid
-
-        if nid_norm < self.num_users:
+    def _is_user_or_item(self, nid):
+        if nid < self.num_users:
             return USER
         else:
             return ITEM

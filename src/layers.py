@@ -67,7 +67,6 @@ class RGCLayer(MessagePassing):
             assert type(r) is int
             mu_j[r:] += self.ord_basis[r]
         mu_j = self.our_node_dropout(mu_j)
-
         h = []
         for r in range(self.num_relations):
             edge_index_r_indices = (edge_type == r).nonzero().view(-1)
@@ -104,33 +103,31 @@ class RGCLayer(MessagePassing):
 
 # First Layer of the Encoder
 class GNNLayer(nn.Module):
-    def __init__(self, config, weight_init, gnn_type, n_layers, num_users):
+    def __init__(self, config, weight_init, gnn_type, n_layers, num_users, num_relations): # TODO: handle multiple layers smartly
         super(GNNLayer, self).__init__()
         self.num_users = num_users
-        self.n_layers = n_layers
+        self.num_relations = num_relations
+        # self.n_layers = n_layers
+        # self.agg = nn.Linear()
         GNN_u, GNN_v, GNN_uv = [], [], []
-        dims_default = [64, 32, 16, 8]  # TODO: make this proper
-        for i in range(n_layers):
-            # create in_dim and out_dim
-            if i == 0:
-                in_dim = 1
-                out_dim = dims_default[i]
-            elif i == n_layers - 1:
-                in_dim = dims_default[i - 1]
-                out_dim = config.hidden_size[0]
-            else:
-                in_dim = dims_default[i - 1]
-                out_dim = dims_default[i]
-
+        # dims_default = [32, 16, 8]  # TODO: make this proper
+        out_dim = config.hidden_size[0]
+        dims_li = \
+            [
+                (64, out_dim//num_relations),
+                # (out_dim, out_dim//num_relations),
+            ]
+        assert out_dim % num_relations == 0
+        for (in_dim, out_dim) in dims_li:
             # form layers
             if gnn_type == GCN:
-                GNN_u.append(GCNConv(in_dim, out_dim))
-                GNN_v.append(GCNConv(in_dim, out_dim))
-                GNN_uv.append(GCNConv(out_dim, out_dim))
+                GNN_u.append(nn.ModuleList([GCNConv(in_dim, out_dim) for _ in range(num_relations)]))
+                GNN_v.append(nn.ModuleList([GCNConv(in_dim, out_dim) for _ in range(num_relations)]))
+                GNN_uv.append(nn.ModuleList([GCNConv(out_dim, out_dim) for _ in range(num_relations)]))
             elif gnn_type == GAT:
-                GNN_u.append(GATConv(in_dim, out_dim))
-                GNN_v.append(GATConv(in_dim, out_dim))
-                GNN_uv.append(GATConv(out_dim, out_dim))
+                GNN_u.append(nn.ModuleList([GATConv(in_dim, out_dim) for _ in range(num_relations)]))
+                GNN_v.append(nn.ModuleList([GATConv(in_dim, out_dim) for _ in range(num_relations)]))
+                GNN_uv.append(nn.ModuleList([GATConv(out_dim, out_dim) for _ in range(num_relations)]))
             else:
                 assert False
 
@@ -138,21 +135,35 @@ class GNNLayer(nn.Module):
         self.GNN_v = nn.ModuleList(GNN_v)
         self.GNN_uv = nn.ModuleList(GNN_uv)
 
-    def forward(self, x, edge_index, edge_index_u, edge_index_v):
+    def forward(self, x, edge_index, relation2edge_dict):
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         x = x.to(device)
-        edge_index = edge_index.to(device)
-        edge_index_u = edge_index_u.to(device)
-        edge_index_v = edge_index_v.to(device)
-        for i in range(self.n_layers):
-            x_u = self.GNN_u[i](x, edge_index_u)[:self.num_users]
-            x_v = self.GNN_v[i](x, edge_index_v)[self.num_users:]
-            x = torch.cat((x_u, x_v), dim=0)
-            x = self.GNN_uv[i](x, edge_index)
+        # edge_index = edge_index.to(device)
+        for i, (gnn_u, gnn_v, gnn_uv) in enumerate(zip(self.GNN_u, self.GNN_v, self.GNN_uv)):
+            if i != 0:
+                x = F.relu(F.dropout(x, training=self.training))
+            x_li = []
+            for r,edge_dict in relation2edge_dict.items():
+                if edge_dict['user'] is not None:
+                    x_u = gnn_u[r](x, edge_dict['user'])[:self.num_users]
+                else:
+                    assert False # TODO: debug mode this
+                    # x_u = self.GNN_u[i][r](x, [])[:self.num_users]
+                if edge_dict['item'] is not None:
+                    x_v = gnn_v[r](x, edge_dict['item'])[self.num_users:]
+                else:
+                    assert False # TODO: debug mode this
+                    # x_u = self.GNN_u[i][r](x, [])[:self.num_users]
+                x_r = torch.cat((x_u, x_v), dim=0)
+                x_r = gnn_uv[r](x_r, edge_dict['user-item'])
+                x_li.append(x_r)
+            x = torch.cat(tuple(x_li), dim=1)
+            # if i != self.n_layers-1:
+            #     x = torch.cat(tuple(x_li), dim=1)
+            # else:
+            #     x = torch.sum(torch.stack(x_li, dim=0), dim=0)
             # TODO: possibly add a u super node and v super node
             #  if edge_index_u and edge_index_v are highly disconnected
-            if i != self.n_layers - 1:
-                x = F.relu(F.dropout(x, training=self.training))
         return x
 
 # Second Layer of the Encoder
