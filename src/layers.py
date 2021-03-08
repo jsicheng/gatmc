@@ -70,7 +70,7 @@ class RGCLayer(MessagePassing):
         mu_j = self.our_node_dropout(mu_j)
 
         h = []
-        for r in edge_type:
+        for r in range(self.num_relations):
             edge_index_r_indices = (edge_type == r).nonzero().view(-1)
             edge_index_r = edge_index[:,edge_index_r_indices]
             edge_norm_r = edge_norm[edge_index_r_indices]
