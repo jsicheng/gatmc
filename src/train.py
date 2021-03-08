@@ -5,15 +5,20 @@ from dataset import MCDataset
 from model import GAE
 from trainer import Trainer
 from utils import calc_rmse, ster_uniform, random_init, init_xavier, init_uniform, Config
+import torch, gc
+
+
 
 def main(cfg):
     cfg = Config(cfg)
+    gc.collect()
+    torch.cuda.empty_cache()
 
     # device and dataset setting
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     dataset = MCDataset(cfg.root, cfg.dataset_name)
     data = dataset[0].to(device)
-
+    
     # add some params to config
     cfg.num_nodes = dataset.num_nodes
     cfg.num_relations = dataset.num_relations
