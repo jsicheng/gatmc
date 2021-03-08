@@ -2,10 +2,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import networkx as nx
-from layers import RGCLayer, DenseLayer
-from torch_geometric.nn import GCNConv, GATConv
+from layers import RGCLayer, GNNLayer, DenseLayer
 from torch_geometric.utils.convert import to_networkx
-
 
 USER, ITEM = 'user', 'item'
 GCN, GAT = 'gcn', 'gat'
@@ -15,7 +13,7 @@ GCN, GAT = 'gcn', 'gat'
 class GAE(nn.Module):
     def __init__(self, config, weight_init):
         super(GAE, self).__init__()
-        self.gcenc = GCEncoder(config, weight_init)
+        self.gcenc = OurGCEncoder(config, weight_init)
         self.bidec = BiDecoder(config, weight_init)
 
     def forward(self, x, edge_index, edge_type, edge_norm, data):
@@ -23,55 +21,6 @@ class GAE(nn.Module):
         adj_matrices = self.bidec(u_features, i_features)
 
         return adj_matrices
-
-
-class GNNLayer(nn.Module):
-    def __init__(self, config, weight_init, gnn_type, n_layers, num_users):
-        super(GNNLayer, self).__init__()
-        self.num_users = num_users
-        self.n_layers = n_layers
-        GNN_u, GNN_v, GNN_uv = [], [], []
-        dims_default = [64, 32, 16, 8]  # TODO: make this proper
-        for i in range(n_layers):
-            # create in_dim and out_dim
-            if i == 0:
-                in_dim = 1
-                out_dim = dims_default[i]
-            elif i == n_layers - 1:
-                in_dim = dims_default[i - 1]
-                out_dim = config.hidden_size[0]
-            else:
-                in_dim = dims_default[i - 1]
-                out_dim = dims_default[i]
-
-            # form layers
-            if gnn_type == GCN:
-                GNN_u.append(GCNConv(in_dim, out_dim))
-                GNN_v.append(GCNConv(in_dim, out_dim))
-                GNN_uv.append(GCNConv(out_dim, out_dim))
-            elif gnn_type == GAT:
-                GNN_u.append(GATConv(in_dim, out_dim))
-                GNN_v.append(GATConv(in_dim, out_dim))
-                GNN_uv.append(GATConv(out_dim, out_dim))
-            else:
-                assert False
-
-        self.GNN_u = nn.ModuleList(GNN_u)
-        self.GNN_v = nn.ModuleList(GNN_v)
-        self.GNN_uv = nn.ModuleList(GNN_uv)
-
-    def forward(self, x, edge_index, edge_index_u, edge_index_v):
-        for i in range(self.n_layers):
-            x_u = self.GNN_u[i](x, edge_index_u)[:self.num_users]
-            x_v = self.GNN_v[i](x, edge_index_v)[self.num_users:]
-            x = torch.cat((x_u, x_v), dim=0)
-            x = self.GNN_uv[i](x, edge_index)
-            # TODO: possibly add a u super node and v super node
-            #  if edge_index_u and edge_index_v are highly disconnected
-            if i != self.n_layers - 1:
-                x = F.relu(F.dropout(x, training=self.training))
-        return x
-
 
 class OurGCEncoder(nn.Module):
     def __init__(self, config, weight_init):
@@ -152,10 +101,8 @@ class OurGCEncoder(nn.Module):
                     u_features = features[:self.num_users]
                     i_features = features[self.num_users: (r + 1) * num_nodes]
                 else:
-                    u_features = torch.cat((u_features,
-                                            features[r * num_nodes: r * num_nodes + self.num_users]), dim=0)
-                    i_features = torch.cat((i_features,
-                                            features[r * num_nodes + self.num_users: (r + 1) * num_nodes]), dim=0)
+                    u_features = torch.cat((u_features, features[r * num_nodes: r * num_nodes + self.num_users]), dim=0)
+                    i_features = torch.cat((i_features, features[r * num_nodes + self.num_users: (r + 1) * num_nodes]), dim=0)
 
         else:
             u_features = features[:self.num_users]
@@ -190,10 +137,8 @@ class GCEncoder(nn.Module):
                     u_features = features[:self.num_users]
                     i_features = features[self.num_users: (r + 1) * num_nodes]
                 else:
-                    u_features = torch.cat((u_features,
-                                            features[r * num_nodes: r * num_nodes + self.num_users]), dim=0)
-                    i_features = torch.cat((i_features,
-                                            features[r * num_nodes + self.num_users: (r + 1) * num_nodes]), dim=0)
+                    u_features = torch.cat((u_features, features[r * num_nodes: r * num_nodes + self.num_users]), dim=0)
+                    i_features = torch.cat((i_features, features[r * num_nodes + self.num_users: (r + 1) * num_nodes]), dim=0)
 
         else:
             u_features = features[:self.num_users]
