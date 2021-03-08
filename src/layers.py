@@ -58,7 +58,6 @@ class RGCLayer(MessagePassing):
             weight_init(basis, self.in_c, self.out_c)
 
     def forward(self, x, edge_index, edge_type, edge_norm=None):
-        # return self.propagate(self.accum, edge_index, x=x, edge_type=edge_type, edge_norm=edge_norm)
         return self.our_propagate(x, edge_index, edge_type, edge_norm)
 
     def our_propagate(self, x, edge_index, edge_type, edge_norm):
