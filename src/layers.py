@@ -209,9 +209,7 @@ class DenseLayer(nn.Module):
         self.fc = nn.Linear(in_c, out_c, bias=bias)
         if config.accum == 'stack':
             self.bn_u = nn.BatchNorm1d(config.num_users * config.num_relations)
-            self.bn_i = nn.BatchNorm1d((
-                                               config.num_nodes - config.num_users) * config.num_relations
-                                       )
+            self.bn_i = nn.BatchNorm1d((config.num_nodes - config.num_users) * config.num_relations)
         else:
             self.bn_u = nn.BatchNorm1d(config.num_users)
             self.bn_i = nn.BatchNorm1d(config.num_nodes - config.num_users)
@@ -221,16 +219,14 @@ class DenseLayer(nn.Module):
         u_features = self.dropout(u_features)
         u_features = self.fc(u_features)
         if self.bn:
-            u_features = self.bn_u(
-                u_features.unsqueeze(0)).squeeze()
+            u_features = self.bn_u(u_features.unsqueeze(0)).squeeze()
         if self.relu:
             u_features = self.relu(u_features)
 
         i_features = self.dropout(i_features)
         i_features = self.fc(i_features)
         if self.bn:
-            i_features = self.bn_i(
-                i_features.unsqueeze(0)).squeeze()
+            i_features = self.bn_i(i_features.unsqueeze(0)).squeeze()
         if self.relu:
             i_features = self.relu(i_features)
 

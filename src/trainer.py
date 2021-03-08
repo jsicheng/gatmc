@@ -41,7 +41,7 @@ class Trainer:
     def summary(self, epoch, loss, train_rmse=None, test_rmse=None):
         if test_rmse is None:
             print('[ Epoch: {:>4}/{} | Loss: {:.6f} ]'.format(
-                epoch, self.epochs, loss))
+                epoch+1, self.epochs, loss))
         else:
             print('[ Epoch: {:>4}/{} | Loss: {:.6f} | RMSE: {:.6f} | Test RMSE: {:.6f} ]'.format(
-                epoch, self.epochs, loss, train_rmse, test_rmse))
+                epoch+1, self.epochs, loss, train_rmse, test_rmse))
