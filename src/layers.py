@@ -103,7 +103,7 @@ class RGCLayer(MessagePassing):
 
 # First Layer of the Encoder
 class GNNLayer(nn.Module):
-    def __init__(self, config, weight_init, gnn_type, n_layers, num_users, num_relations): # TODO: handle multiple layers smartly
+    def __init__(self, config, weight_init, gnn_type, with_uv, num_users, num_relations): # TODO: handle multiple layers smartly
         super(GNNLayer, self).__init__()
         self.num_users = num_users
         self.num_relations = num_relations
@@ -111,6 +111,7 @@ class GNNLayer(nn.Module):
         # self.agg = nn.Linear()
         GNN_u, GNN_v, GNN_uv = [], [], []
         # dims_default = [32, 16, 8]  # TODO: make this proper
+        self.with_uv = with_uv
         out_dim = config.hidden_size[0]
         dims_li = \
             [
@@ -155,7 +156,8 @@ class GNNLayer(nn.Module):
                     assert False # TODO: debug mode this
                     # x_u = self.GNN_u[i][r](x, [])[:self.num_users]
                 x_r = torch.cat((x_u, x_v), dim=0)
-                x_r = gnn_uv[r](x_r, edge_dict['user-item'])
+                if self.with_uv:
+                    x_r = gnn_uv[r](x_r, edge_dict['user-item'])
                 x_li.append(x_r)
             x = torch.cat(tuple(x_li), dim=1)
             # if i != self.n_layers-1:
