@@ -1,19 +1,28 @@
+import time
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import networkx as nx
 from layers import RGCLayer, GNNLayer, DenseLayer
 from torch_geometric.utils.convert import to_networkx
+from torch_geometric.utils.dropout import dropout_adj
 from collections import defaultdict
 USER, ITEM = 'user', 'item'
 GCN, GAT = 'gcn', 'gat'
 
+class Timer():
+    def __init__(self):
+        self.last_t = time.time()
+    def get_time(self):
+        delta = time.time()-self.last_t
+        self.last_t = time.time()
+        return delta
 
 # Main Model
 class GAE(nn.Module):
     def __init__(self, config, weight_init):
         super(GAE, self).__init__()
-        self.gcenc = GCEncoder(config, weight_init)
+        self.gcenc = OurGCEncoder(config, weight_init)
         self.bidec = BiDecoder(config, weight_init)
 
     def forward(self, x, edge_index, edge_type, edge_norm, data):
@@ -37,6 +46,7 @@ class OurGCEncoder(nn.Module):
         # self.rgc_layer = RGCLayer(config, weight_init)
         self.gnn = GNNLayer(config, weight_init, GCN, 2, self.num_users, self.num_relations)
         self.dense_layer = DenseLayer(config, weight_init)
+        self.edge_obj_cache = {}
 
     def forward(self, x, edge_index, edge_type, edge_norm, data):
         # g = to_networkx(data)
@@ -46,14 +56,32 @@ class OurGCEncoder(nn.Module):
         #     # assert num_nodes == g.number_of_nodes()
         #     # TODO: else:
         #     assert x.shape[0] == g.number_of_nodes()
-        self.init_g(x.shape[0], edge_index, edge_type)
-        relation2edge_dict = self.separate_edges(edge_index, edge_type) # TODO: separate edges correctly
-        x = self.get_x_init()
+        # timer = Timer()
+        # print('start', timer.get_time())
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        cache_key = tuple(list(edge_index.shape))
+        if hash(cache_key) not in self.edge_obj_cache:
+            edge_index, edge_type = dropout_adj(edge_index, edge_type.view(-1, 1), self.drop_prob)
+            edge_index, edge_type = edge_index.to(device), edge_type.view(-1).to(device)
+            self.init_g(x.shape[0], edge_index, edge_type)
+            relation2edge_dict = self.separate_edges(edge_index, edge_type) # TODO: separate edges correctly
+            avg_ratings, num_ratings, ones_vec = self.get_node_metadata()
+            self.edge_obj_cache[hash(cache_key)] = \
+                edge_index, edge_type, relation2edge_dict, \
+                avg_ratings, num_ratings, ones_vec
+        else:
+            edge_index, edge_type, relation2edge_dict, avg_ratings, num_ratings, ones_vec = \
+                self.edge_obj_cache[hash(cache_key)]
+        # print('ei', timer.get_time())
+        x = self.get_x_init(avg_ratings, num_ratings, ones_vec)
+        # print('x_init', timer.get_time())
 
         features = self.gnn(x, edge_index, relation2edge_dict) # TODO: set up dimensions properly
+        # print('gnn', timer.get_time())
         # features = self.rgc_layer(x, edge_index, edge_type, edge_norm)
         u_features, i_features = self.separate_features(features)
         u_features, i_features = self.dense_layer(u_features, i_features)
+        # print('sep+dense', timer.get_time())
 
         return u_features, i_features
 
@@ -67,23 +95,22 @@ class OurGCEncoder(nn.Module):
             g.add_edges_from(edge_list_r, r=r) # TODO: ensure that the nodes added preserve order i.e. g.nodes[nid]['nid'] == nid \forall nid
         self.g = g
 
-    def get_x_init(self):
-        avg_ratings, num_ratings, ones_vec = self.get_node_metadata()
+    def get_x_init(self, avg_ratings, num_ratings, ones_vec):
         init_features = torch.stack((avg_ratings, num_ratings, ones_vec), dim=-1) # (N+M) x 3
         x_users = self.encoder_user(init_features[:self.num_users])# N x 3 * 3 x D = N x D
-        x_items = self.encoder_item(init_features[:self.num_users]) # M x 3 * 3 x D = M x D
+        x_items = self.encoder_item(init_features[self.num_users:]) # M x 3 * 3 x D = M x D
         x_init = torch.cat((x_users, x_items), dim=0) # (N+M) x D
-        x_init = self.our_node_dropout(x_init)
+        # x_init = self.our_node_dropout(x_init)
         # print(x_init.shape, x_init)
         return x_init
 
-    def our_node_dropout(self, x):
-        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        drop_mask = torch.rand(x.size(0), device=device) + (1 - self.drop_prob)
-        drop_mask = torch.floor(drop_mask).type(torch.float)
-        drop_mask = drop_mask.view(-1,1)
-        x = x * drop_mask
-        return x
+    # def our_node_dropout(self, x):
+    #     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    #     drop_mask = torch.rand(x.size(0), device=device) + (1 - self.drop_prob)
+    #     drop_mask = torch.floor(drop_mask).type(torch.float)
+    #     drop_mask = drop_mask.view(-1,1)
+    #     x = x * drop_mask
+    #     return x
 
     def get_node_metadata(self):
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
