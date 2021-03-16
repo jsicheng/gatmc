@@ -1,0 +1,42 @@
+cold_users, reviews, model, with_uv, dropout, rsme
+50, 1, gcn, false, 0.0, 1.004178
+50, 1, gcn, false, 0.3, 1.011700
+50, 1, gcn, false, 0.5, 0.971178
+50, 1, gcn, false, 0.7, 0.969709
+50, 1, gcn, false, 0.9, 0.975451
+50, 1, gcn, true, 0.0, 0.990326
+50, 1, gcn, true, 0.3, 0.986907
+50, 1, gcn, true, 0.5, 0.985355
+50, 1, gcn, true, 0.7, 0.975488
+50, 1, gcn, true, 0.9, 0.981689
+50, 1, gat, false, 0.0, 0.982694
+50, 1, gat, false, 0.3, 0.999144
+50, 1, gat, false, 0.5, 0.981554
+50, 1, gat, false, 0.7, 0.998292
+50, 1, gat, false, 0.9, 0.988864
+50, 1, gat, true, 0.0, 0.977467
+50, 1, gat, true, 0.3, 0.968285
+50, 1, gat, true, 0.5, 0.983754
+50, 1, gat, true, 0.7, 0.982465
+50, 1, gat, true, 0.9, 0.998412
+
+50, 5, gcn, false, 0.0, 0.952297
+50, 5, gcn, false, 0.3, 
+50, 5, gcn, false, 0.5, 
+50, 5, gcn, false, 0.7, 
+50, 5, gcn, false, 0.9, 
+50, 5, gcn, true, 0.0, 
+50, 5, gcn, true, 0.3, 
+50, 5, gcn, true, 0.5, 
+50, 5, gcn, true, 0.7, 
+50, 5, gcn, true, 0.9, 
+50, 5, gat, false, 0.0, 
+50, 5, gat, false, 0.3, 
+50, 5, gat, false, 0.5, 
+50, 5, gat, false, 0.7, 
+50, 5, gat, false, 0.9, 
+50, 5, gat, true, 0.0, 
+50, 5, gat, true, 0.3, 
+50, 5, gat, true, 0.5, 
+50, 5, gat, true, 0.7, 
+50, 5, gat, true, 0.9, 

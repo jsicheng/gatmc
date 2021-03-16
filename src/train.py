@@ -29,15 +29,10 @@ def main(cfg):
     model.apply(init_xavier)
 
     # optimizer
-    optimizer = torch.optim.Adam(
-        model.parameters(),
-        lr=cfg.lr, weight_decay=cfg.weight_decay,
-    )
+    optimizer = torch.optim.Adam(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
     
     # train
-    trainer = Trainer(
-        model, data, calc_rmse, optimizer
-    )
+    trainer = Trainer(model, data, calc_rmse, optimizer)
     trainer.training(cfg.epochs)
 
 
