@@ -44,8 +44,8 @@ class OurGCEncoder(nn.Module):
         self.encoder_item = nn.Linear(3, in_dim)
 
         # self.rgc_layer = RGCLayer(config, weight_init)
-        with_uv = False
-        self.gnn = GNNLayer(config, weight_init, GCN, with_uv, self.num_users, self.num_relations)
+        with_uv = True
+        self.gnn = GNNLayer(config, weight_init, GAT, with_uv, self.num_users, self.num_relations)
         self.dense_layer = DenseLayer(config, weight_init)
         self.edge_obj_cache = {}
 
