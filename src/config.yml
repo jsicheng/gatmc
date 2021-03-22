@@ -15,6 +15,10 @@ rgc_relu: True
 dense_bn: True
 dense_relu: True
 bidec_drop: False
+#use user-item graph
+use_uv: True
+#use gcn or gat
+model: 'gcn'
 
 # dataset
 root: data/ml-100k
