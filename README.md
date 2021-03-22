@@ -1,7 +1,10 @@
 # Graph Attention Matrix Completion (Pytorch)
 Includes [PyTorch Implementation] (https://github.com/tanimutomo/gcmc) of [Graph Convolutional Matrix Completion](https://arxiv.org/abs/1706.02263) (PyTorch and PyTorch Geometric)
+
 ![approach](./figs/approach.png)
+
 Improves upon GCMC using graph separation and fusion layers.
+
 ![approach](./figs/our_approach.png)
 
 ## Setup
